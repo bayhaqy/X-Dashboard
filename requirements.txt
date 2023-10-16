@@ -1,0 +1,13 @@
+streamlit-aggrid
+ydata-profiling
+streamlit-pandas-profiling
+streamlit
+vaderSentiment
+beautifulsoup4
+deep-translator
+langdetect
+nltk
+plotly
+textblob
+torch
+transformers
