@@ -1,6 +1,7 @@
 # Data Analysis and Profiling
 import pandas as pd
 from ydata_profiling import ProfileReport
+from st_aggrid import AgGrid
 
 # Streamlit for Building the Dashboard
 import streamlit as st
@@ -50,11 +51,11 @@ nltk.download('punkt')
 @st.cache_data
 def install_nodejs():
     st.sidebar.markdown('OS Information')
-    result_OS = subprocess.check_output(['lsb_release', '-a']).decode("utf-8")
+    result_OS = subprocess.check_output(['cat', '/etc/lsb-release']).decode("utf-8")
     st.sidebar.markdown(f'{result_OS}')
 
     st.sidebar.markdown('Python Information')
-    result_PY = subprocess.check_output(['python', '--version']).decode("utf-8")
+    result_PY = subprocess.check_output(['python3', '--version']).decode("utf-8")
     st.sidebar.markdown(f'{result_PY}')
 
     st.sidebar.markdown('IP Information')
@@ -65,14 +66,14 @@ def install_nodejs():
     # Iterate through the dictionary and print key-value pairs
     for key, value in result_dict.items():
         st.sidebar.markdown(f'{key} : {value}')
-        
+
     try:
         # Check if Node.js is already installed by attempting to get its version.
         node_major_version = int(subprocess.check_output(['node', '-v']).decode("utf-8").split('.')[0][1:])
     except FileNotFoundError:
         # If 'node' command is not found, it means Node.js is not installed.
         node_major_version = 0
-        
+
     if node_major_version < 20:
         st.sidebar.markdown('Update OS')
         subprocess.check_call(['sudo', 'apt-get', 'update'])
@@ -104,7 +105,7 @@ def run_X_scrapping(search_keyword,from_date,to_date,limit,delay,token,filename)
     with st.expander("Scrapping Logs"):
         # Run scraping with the provided parameters
         #st.markdown('Check Tweet')
-        command = f'npx --yes {X_Sources} -s "{search_keyword}" -f "{from_date}" -t "{to_date}" -l {limit} -d {delay} --token "{token}" -o "{filename}"'
+        command = f'npx --yes tweet-harvest@latest -s "{search_keyword}" -f "{from_date}" -t "{to_date}" -l {limit} -d {delay} --token "{token}" -o "{filename}"'
         try:
             result = subprocess.run(command, shell=True, capture_output=True, text=True, check=True)
             st.markdown("Command executed successfully.")
@@ -119,7 +120,7 @@ def run_X_scrapping(search_keyword,from_date,to_date,limit,delay,token,filename)
 # Function for get model and tokenize
 @st.cache_resource
 def get_models_and_tokenizers():
-    model_name = X_Model
+    model_name = 'distilbert-base-uncased-finetuned-sst-2-english'
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
     #model.eval()
@@ -197,7 +198,6 @@ def translate_text(text, source='auto', target='en'):
 def selection_data(filename):
     file_path = f"tweets-data/{filename}"
     df = pd.read_csv(file_path, delimiter=";")
-
 
     # Rename columns
     column_mapping = {
@@ -315,6 +315,9 @@ def preprocessing_data(df):
     # Remove duplicates
     df = df.drop_duplicates(subset='Translation')
 
+    # Reset the index to add the date column
+    df.reset_index(inplace=True,drop=True)
+
     # Function to clean and preprocess text
     def clean_text(text):
         # Remove mentions (e.g., @username)
@@ -358,7 +361,7 @@ def create_wordcloud(df):
     text = ' '.join(df['Cleaned Translation'])
 
     # Create a Word Cloud
-    wordcloud = WordCloud(width=700, height=400, max_words=50).generate(text)
+    wordcloud = WordCloud(width=700, height=500, max_words=80).generate(text)
 
     # Convert the word cloud to an image
     wordcloud_image = wordcloud.to_image()
@@ -375,7 +378,7 @@ def convert_df(df):
 
 ## ............................................... ##
 # Set page configuration (Call this once and make changes as needed)
-st.set_page_config(page_title='(Tweet) X Scrapper Dashboard',  layout='wide', page_icon='	📱')
+st.set_page_config(page_title='(Tweet) X Scrapper Dashboard',  layout='wide', page_icon=':iphone:')
 
 ## ............................................... ##
 with st.container():
@@ -397,13 +400,6 @@ st.sidebar.divider()
 st.sidebar.markdown("© 2023 (Tweet) X Scrapper Dashboard")
 
 ## ............................................... ##
-# HuggingFace API KEY input
-X_Sources = os.environ.get("X_Sources")
-X_Limit = int(os.environ.get("X_Limit"))
-X_Auth = os.environ.get("X_Auth")
-X_Model = os.environ.get("X_Model")
-
-## ............................................... ##
 # Initialize to install node.js
 if st.sidebar.button("Check Node.js updated"):
     install_nodejs()
@@ -420,7 +416,7 @@ if 'data' not in st.session_state:
 logging.basicConfig(filename='tweet_harvest.log', level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 ## ............................................... ##
-with st.container():    
+with st.container():
     with st.expander("Start to scrapping"):
         # Input search parameters
         search_keyword = st.text_input("Enter search keyword", "Mitra Adiperkasa",)
@@ -428,13 +424,12 @@ with st.container():
         col1, col2 = st.columns(2)
         with col1:
           from_date = st.date_input('From Date :', pd.to_datetime('2023-01-01'))
-          limit = st.number_input("Enter limit", min_value=1, value=10, max_value = X_Limit)
+          limit = st.number_input("Enter limit", min_value=1, value=10)
         with col2:
           to_date = st.date_input('To Date :', pd.to_datetime('2023-12-01'))
           delay = st.number_input("Enter delay in seconds", min_value=1, value=3)
 
-        token = st.text_input("Enter your X Auth Token", X_Auth, type="password")
-
+        token = st.text_input('Enter your X Auth Token :')
 ## ............................................... ##
         col1, col2 = st.columns(2)
 
@@ -453,9 +448,15 @@ with st.container():
         # Format the dates as "DD-MM-YYYY"
         from_date = from_date.strftime("%d-%m-%Y")
         to_date = to_date.strftime("%d-%m-%Y")
-        
-        filename = 'tweets_data.csv'
 
+        filename = 'tweets_data.csv'
+        search_keyword = str(search_keyword)
+        from_date = str(from_date)
+        to_date = str(to_date)
+        limit = int(limit)
+        delay = str(delay)
+        token = str(token)
+        
         run_X_scrapping(search_keyword,from_date,to_date,limit,delay,token,filename)
 
         df = selection_data(filename)
@@ -464,27 +465,30 @@ with st.container():
         if include_translation:
             df['Translation'] = df.apply(lambda row: translate_text((row['Tweet']), source=row['Detect Language'], target='en'), axis=1)
             df = preprocessing_data(df)
-        
+
         # Conditionally apply sentiment analysis function to the 'Translation' column
         if include_sentiment_analysis:
             df[['Fake Check', 'Sentiment Distilbert']] = df['Translation'].apply(lambda text: pd.Series(analyze_sentiment_distilbert(text, model, tokenizer))).apply(lambda x: x.str.title())
-        
+
         # Conditionally apply VADER sentiment analysis to the 'Translation' column
         if include_sentiment_vader:
             df['Sentiment VADER'] = df['Translation'].apply(analyze_sentiment_vader)
-        
+
         # Conditionally apply TextBlob sentiment analysis to the 'Translation' column
         if include_sentiment_textblob:
             df['Sentiment TextBlob'] = df['Translation'].apply(analyze_sentiment_textblob)
-        
+
         # Save the data to session_state
         st.session_state.data = df
 
 ## ............................................... ##
 # Check if data is available
-if st.session_state.data is not None:  
-    with st.container():
-        df_cache = st.session_state.data
+if st.session_state.data is not None:
+    df_cache = st.session_state.data
+
+    ## ............................................... ##
+    with st.expander("Show Download Button"):
+        # Display the download button if the checkbox is checked
         st.markdown("### Download Processed Data as CSV")
         st.write("Click the button below to download the processed data as a CSV file.")
         csv_data = convert_df(df_cache)
@@ -497,80 +501,102 @@ if st.session_state.data is not None:
             mime='text/csv',
         )
 
-        with st.expander("See for Table"):
-            ## ............................................... ##
-            # Display processed data
-            st.dataframe(df_cache)
-
+    ## ............................................... ##
+    with st.expander("See for Table"):
         # Display processed data
-        with st.expander("See for Exploratory Data Analysis"):
+        AgGrid(df_cache, height=400)
+
+    ## ............................................... ##
+    # Display processed data
+    with st.expander("See for Exploratory Data Analysis"):
+        col1, col2 = st.columns(2)
+        with col1:
             ## ............................................... ##
-            col1, col2 = st.columns(2)
-            with col1:
-                ## ............................................... ##
-                # Create a new column with a count of 1 for each tweet
-                df_date = pd.DataFrame(df_cache['Created Date'])
-                df_date['Tweet Count'] = 1
+            # Create wordcloud
+            try:
+                create_wordcloud(df_cache)
+            except Exception as e:
+                logging.error(f" Column Translation Not Available : {str(e)}")
 
-                # Resample the data per second and calculate the count
-                data_resampled = df_date.resample('S', on='Created Date')['Tweet Count'].count().reset_index()
+            ## ............................................... ##
+            # Create a DataFrame to count the number of tweets by Fake Check
+            FakeCheck_counts = df_cache['Fake Check'].value_counts().reset_index()
+            FakeCheck_counts.columns = ['Fake Check', 'Tweet Count']
+            fig = px.bar(FakeCheck_counts, x='Fake Check', y='Tweet Count', text='Tweet Count', title='Total Tweet by Fake Check')
+            st.plotly_chart(fig, use_container_width=True, use_container_height=True, width=700, height=400)
 
-                # Create a time series plot with custom styling
-                fig = px.line(data_resampled, x='Created Date', y='Tweet Count', title='Tweet Counts Over Time')
-                fig.update_xaxes(title_text='Time')
-                fig.update_yaxes(title_text='Tweet Count')
-                fig.update_layout(xaxis_rangeslider_visible=True)
+        with col2:
+            ## ............................................... ##
+            # Create a DataFrame to count the number of tweets by language
+            language_counts = df_cache['Language'].value_counts().reset_index()
+            language_counts.columns = ['Language', 'Tweet Count']
+            fig = px.bar(language_counts, x='Language', y='Tweet Count', text='Tweet Count', title='Total Tweet by Language')
+            st.plotly_chart(fig, use_container_width=True, use_container_height=True, width=700, height=400)
 
-                # Specify custom dimensions for the chart
+            ## ............................................... ##
+            # Group by Sentiment columns and get the count
+            try:
+                sentiment_counts = df_cache[['Sentiment Distilbert', 'Sentiment VADER', 'Sentiment TextBlob']].apply(lambda x: x.value_counts()).T
+                sentiment_counts = sentiment_counts.reset_index()
+                sentiment_counts = pd.melt(sentiment_counts, id_vars='index', var_name='Sentiment', value_name='Count')
+                fig = px.bar(sentiment_counts, x='Sentiment', y='Count', color='index', barmode='group', title='Total Tweet per Sentiment')
                 st.plotly_chart(fig, use_container_width=True, use_container_height=True, width=700, height=400)
 
-                ## ............................................... ##
-                # Create wordcloud
-                try:
-                    create_wordcloud(df_cache)
-                except Exception as e:
-                    logging.error(f" Column Translation Not Available : {str(e)}")
+            except Exception as e:
+                logging.error(f" Column Sentiment Not Available : {str(e)}")
 
-                ## ............................................... ##
+            ## ............................................... ##
 
-            with col2:
-                ## ............................................... ##
-                # Create a DataFrame to count the number of tweets by language
-                language_counts = df_cache['Language'].value_counts().reset_index()
-                language_counts.columns = ['Language', 'Tweet Count']
+        # Create a slider widget for the user to select the time interval
+        # Set the min, max, and step parameters for the slider
+        min_interval = 1
+        max_interval = 365  # Maximum interval in days
+        selected_interval = st.slider("Select time interval", min_value=min_interval, max_value=max_interval, value=min_interval)
 
-                # Create an attractive Plotly bar chart
-                fig = px.bar(language_counts, x='Language', y='Tweet Count', text='Tweet Count', title='Total Tweet by Language')
-                fig.update_xaxes(title_text='Language')
-                fig.update_yaxes(title_text='Total Tweet')
+        # Convert the selected_interval to the corresponding frequency string
+        time_interval = f'{selected_interval}M'
 
-                # Specify custom dimensions for the chart
-                st.plotly_chart(fig, use_container_width=True, use_container_height=True, width=700, height=400)
+        # Create a dictionary to map units to frequency strings
+        time_units = {
+            'Years': 'Y',
+            'Months': 'M',
+            'Weeks': 'W',
+            'Days': 'D',
+            'Hours': 'H',
+            'Minutes': 'T',
+            'Seconds': 'S'
+        }
 
-                ## ............................................... ##
-                # Group by Sentiment columns and get the count
-                try:
-                    sentiment_counts = df_cache[['Sentiment Distilbert', 'Sentiment VADER', 'Sentiment TextBlob']].apply(lambda x: x.value_counts()).T
+        # Create a selectbox for the user to choose the time unit
+        selected_time_unit = st.selectbox("Select time unit", list(time_units.keys()))
 
-                    # Reset index to get Sentiment as a column
-                    sentiment_counts = sentiment_counts.reset_index()
+        # Map the selected time unit to the corresponding frequency string
+        time_interval = f'{selected_interval}{time_units[selected_time_unit]}'
 
-                    # Melt the DataFrame for easier plotting
-                    sentiment_counts = pd.melt(sentiment_counts, id_vars='index', var_name='Sentiment', value_name='Count')
+        # Check Input Data
+        st.write('You selected:', time_interval)
 
-                    # Create the plot
-                    fig = px.bar(sentiment_counts, x='Sentiment', y='Count', color='index', barmode='group', title='Total Tweet per Sentiment')
+        # Convert the 'Created Date' column to datetime
+        df_cache['Created Date'] = pd.to_datetime(df_cache['Created Date'])
 
-                    # Specify custom dimensions for the chart
-                    st.plotly_chart(fig, use_container_width=True, use_container_height=True, width=700, height=400)
+        # Create a new column with a count of 1 for each tweet
+        df_date = pd.DataFrame(df_cache['Created Date'])
+        df_date['Tweet Count'] = 1
 
-                except Exception as e:
-                    logging.error(f" Generate Report error : {str(e)}")
+        # Resample the data based on the adjustable time interval
+        #data_resampled = df_date.resample(time_interval, on='Created Date')['Tweet Count'].count().reset_index()
+        data_resampled = df_date.set_index('Created Date').resample(time_interval)['Tweet Count'].count().reset_index()
 
-        ## ............................................... ##
-        # Display processed data
-        with st.expander("See for Analysis with ydata-profiling"):
-            st.write("Click the button below to download the processed data as a CSV file.")
-            # Show dataset information
-            pr = ProfileReport(df_cache)
-            #st_profile_report(pr)
+        # Create a line chart with the resampled data
+        fig = px.line(data_resampled, x='Created Date', y='Tweet Count', title=f'Tweet Counts Over Time ({time_interval} interval)')
+        fig.update_layout(xaxis_rangeslider_visible=True)
+
+        # Display the chart
+        st.plotly_chart(fig, use_container_width=True, use_container_height=True, width=700, height=400)
+
+    ## ............................................... ##
+    # Display processed data
+    with st.expander("See for Analysis with ydata-profiling"):
+        # Show dataset information
+        pr = ProfileReport(df_cache)
+        st_profile_report(pr)
