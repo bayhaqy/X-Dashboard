@@ -1,3 +1,4 @@
+%%writefile app.py
 # Data Analysis and Profiling
 import pandas as pd
 from ydata_profiling import ProfileReport
@@ -193,11 +194,23 @@ def translate_text(text, source='auto', target='en'):
         return text
 
 ## ............................................... ##
+# Function for language detection with try-except
+@st.cache_data
+def detect_language(text):
+    try:
+        result = detect(text)
+        return result
+    except:
+        remove_emojis = re.sub(r'[^\w\s]', '', text)
+        result = detect(remove_emojis)
+        return result
+
+## ............................................... ##
 # Function for Load and Transform Data
 @st.cache_data
 def selection_data(filename):
     file_path = f"tweets-data/{filename}"
-    df = pd.read_csv(file_path, delimiter=";")
+    df = pd.read_csv(file_path, delimiter=",")
 
     # Rename columns
     column_mapping = {
@@ -214,11 +227,13 @@ def selection_data(filename):
         'retweet_count': 'Retweet Count',
         'favorite_count': 'Favorite Count',
     }
-
     df = df.rename(columns=column_mapping)
 
+    # Drop rows where 'Tweet' is null
+    df.dropna(subset=['Tweet'], inplace=True)
+
     # Add a new column for detected language
-    df['Detect Language'] = df['Tweet'].apply(lambda tweet: detect(tweet))
+    df['Detect Language'] = df['Tweet'].apply(lambda tweet: detect_language(tweet))
 
     # Mapping language codes to country names
     language_to_country = {
@@ -303,8 +318,10 @@ def selection_data(filename):
         'Retweet Count': 'int64',
         'Favorite Count': 'int64',
     }
-
     df = df.astype(data_types)
+
+    # Reset the index to add the date column
+    df.reset_index(inplace=True,drop=True)
 
     return df
 
@@ -333,20 +350,21 @@ def preprocessing_data(df):
         text = text.lower()
 
         # Remove non-alphanumeric characters
-        text = re.sub(r'[^a-zA-Z\s]', '', text)
+        # text = re.sub(r'[^a-zA-Z\s]', '', text)
 
         # Tokenize text
-        words = nltk.word_tokenize(text)
+        # words = nltk.word_tokenize(text)
 
         # Remove stopwords
-        stop_words = set(stopwords.words('english'))
-        words = [word for word in words if word not in stop_words]
+        # stop_words = set(stopwords.words('english'))
+        # words = [word for word in words if word not in stop_words]
 
         # Lemmatize words
-        lemmatizer = WordNetLemmatizer()
-        words = [lemmatizer.lemmatize(word) for word in words]
+        # lemmatizer = WordNetLemmatizer()
+        # words = [lemmatizer.lemmatize(word) for word in words]
+        # text = ' '.join(words)
 
-        return ' '.join(words)
+        return text
 
     # Apply the clean_text function to the "Translation" column
     df['Cleaned Translation'] = df['Translation'].apply(clean_text)
@@ -456,7 +474,7 @@ with st.container():
         limit = int(limit)
         delay = str(delay)
         token = str(token)
-        
+
         run_X_scrapping(search_keyword,from_date,to_date,limit,delay,token,filename)
 
         df = selection_data(filename)
