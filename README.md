@@ -33,6 +33,11 @@ streamlit run app.py
 3. Please see the ip address website.
 4. The application will open in your default web browser.
 
+## Running on Google Colab
+
+1. Open file [X-Dashboard.ipynb](https://colab.research.google.com/github/bayhaqy/X-Dashboard/blob/main/X_Dashboard.ipynb)
+2. Running the code.
+
 ## License
 
 This project is licensed under the MIT License.
