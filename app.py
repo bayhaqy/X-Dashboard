@@ -1,4 +1,3 @@
-%%writefile app.py
 # Data Analysis and Profiling
 import pandas as pd
 from ydata_profiling import ProfileReport
